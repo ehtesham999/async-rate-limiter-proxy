@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 
+from app.core.redis import lifespan
 from app.routers import proxy
+
 
 app = FastAPI(
     title="Smart API Gateway",
-    version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.include_router(proxy.router)
