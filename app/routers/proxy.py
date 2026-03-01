@@ -1,6 +1,7 @@
 import httpx
 from fastapi import APIRouter, Request, Response
 from app.core.config import TARGET_API_BASE_URL, PROXY_TIMEOUT_SECONDS
+from app.services.rate_limiter import check_rate_limit
 
 
 router = APIRouter()
@@ -11,6 +12,26 @@ router = APIRouter()
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
 )
 async def proxy_request(full_path: str, request: Request):
+    if request.client is not None:
+        client_ip = request.client.host
+    else:
+        client_ip = "unknown"
+
+    rate_limit_result = await check_rate_limit(client_ip)
+
+    if not rate_limit_result["allowed"]:
+        return Response(
+            content=(
+                f'{{"error": "Rate limit exceeded.", "retry_after": {rate_limit_result["retry_after"]}}}'
+            ),
+            status_code=429,
+            media_type="application/json",
+            headers={
+                "X-RateLimit-Limit": str(rate_limit_result["max_requests"]),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Retry-After": str(rate_limit_result["retry_after"]),
+            },
+        )
 
     target_url = f"{TARGET_API_BASE_URL}/{full_path}"
 
@@ -20,7 +41,7 @@ async def proxy_request(full_path: str, request: Request):
     request_body = await request.body()
     headers_to_forward = {}
     for header_name, header_value in request.headers.items():
-        if header_name.lower() == "host":
+        if header_name.lower() in {"host", "accept-encoding"}:
             continue
         headers_to_forward[header_name] = header_value
 
@@ -62,4 +83,7 @@ async def proxy_request(full_path: str, request: Request):
         media_type=response_from_target.headers.get("content-type"),
     )
 
+    remaining = rate_limit_result["max_requests"] - rate_limit_result["current_count"]
+    final_response.headers["X-RateLimit-Limit"] = str(rate_limit_result["max_requests"])
+    final_response.headers["X-RateLimit-Remaining"] = str(remaining)
     return final_response

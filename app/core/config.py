@@ -1,3 +1,6 @@
 TARGET_API_BASE_URL = "https://jsonplaceholder.typicode.com"
 PROXY_TIMEOUT_SECONDS = 10.0
 REDIS_URL = "redis://localhost:6379/0"
+
+RATE_LIMIT_MAX_REQUESTS = 5
+RATE_LIMIT_WINDOW_SECONDS = 60
